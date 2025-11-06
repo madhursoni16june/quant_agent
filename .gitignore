@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.venv/
+
+# Dotenv and secrets
+.env
+.env.local
+secrets.toml
+
+# Streamlit
+/.streamlit/
+
+# OS
+.DS_Store
