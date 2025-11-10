@@ -1,64 +1,37 @@
-# app.py - Enhanced Indian Stock Analyzer with Perplexity API
+# app.py - Clean Table-Based Stock Analyzer with Perplexity API
 """
-Comprehensive Indian Stock Analyzer using Perplexity API for accurate financial data.
-Includes 5-year historical data, PEAD scoring, and extensive financial metrics.
-
-Install requirements:
-streamlit
-pandas
-python-dotenv
-requests
+Indian Stock Analyzer with structured table display and PEAD scoring.
+Focused on earnings/results news only.
 """
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import requests
 import json
 import re
 
-# Load env
 try:
     from dotenv import load_dotenv
     load_dotenv()
-except Exception:
+except:
     pass
 
-st.set_page_config(page_title="Advanced Stock Analyzer with PEAD", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Stock Analyzer - PEAD Score", page_icon="📊", layout="wide")
 
 # ------------------------ Utils ------------------------
 def get_secret(key):
-    """Read secret from Streamlit secrets or environment"""
     if hasattr(st, "secrets") and key in st.secrets:
         return st.secrets[key]
     return os.getenv(key)
 
-def format_number(num):
-    """Format numbers in Indian currency format"""
-    if pd.isna(num) or num is None:
-        return "N/A"
-    try:
-        num = float(num)
-    except Exception:
-        return "N/A"
-    if abs(num) >= 1e7:
-        return f"₹{num/1e7:.2f} Cr"
-    elif abs(num) >= 1e5:
-        return f"₹{num/1e5:.2f} L"
-    else:
-        return f"₹{num:,.0f}"
-
-# ------------------------ Perplexity API Integration ------------------------
+# ------------------------ Perplexity API ------------------------
 @st.cache_data(ttl=3600)
 def query_perplexity(prompt, model="sonar-pro"):
-    """
-    Query Perplexity API with a financial analysis prompt.
-    Returns the API response content.
-    """
     api_key = get_secret("PERPLEXITY_API_KEY")
     if not api_key:
-        return None, "Perplexity API key not found. Add PERPLEXITY_API_KEY to secrets."
+        return None, "API key not found"
     
     url = "https://api.perplexity.ai/chat/completions"
     headers = {
@@ -69,17 +42,11 @@ def query_perplexity(prompt, model="sonar-pro"):
     payload = {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": "You are a financial analyst expert specializing in Indian stock markets. Provide accurate, structured financial data with sources. Always include numbers in standardized format."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "system", "content": "You are a financial data analyst. Provide structured, numerical data in JSON format. Be precise and concise."},
+            {"role": "user", "content": prompt}
         ],
         "temperature": 0.1,
-        "max_tokens": 4000
+        "max_tokens": 3000
     }
     
     try:
@@ -93,338 +60,339 @@ def query_perplexity(prompt, model="sonar-pro"):
         return None, str(e)
 
 @st.cache_data(ttl=3600)
-def get_comprehensive_financials(symbol, company_name):
-    """
-    Fetch comprehensive 5-year financial data using Perplexity API.
-    Returns structured data for all key metrics.
-    """
+def get_financial_metrics_table(symbol, company_name):
+    """Get structured financial metrics for last 8 quarters"""
     stock_name = symbol.replace(".NS", "").replace(".BO", "")
     
     prompt = f"""
-For {company_name} (NSE: {stock_name}), provide the following financial data for the last 20 quarters (5 years):
+For {company_name} (NSE: {stock_name}), provide ONLY the following data in JSON format for the last 8 quarters:
 
-**QUARTERLY DATA (Last 20 Quarters):**
-1. Quarter name/date
-2. Total Revenue/Sales
-3. YoY Revenue Growth %
-4. QoQ Revenue Growth %
-5. Gross Profit
-6. Gross Margin %
-7. EBITDA
-8. EBITDA Margin %
-9. YoY EBITDA Growth %
-10. QoQ EBITDA Growth %
-11. Operating Profit (EBIT)
-12. Operating Margin %
-13. Net Profit (PAT)
-14. Net Margin %
-15. YoY Net Profit Growth %
-16. QoQ Net Profit Growth %
-17. EPS (Earnings Per Share)
+{{
+  "company": "{company_name}",
+  "quarters": [
+    {{
+      "quarter": "Q2 FY25",
+      "result_date": "2024-10-15",
+      "forward_pe": 25.6,
+      "sales_yoy": 12.5,
+      "sales_qoq": 3.2,
+      "np_yoy": 15.8,
+      "np_qoq": 4.1,
+      "ebitda_yoy": 14.2,
+      "ebitda_qoq": 3.8,
+      "cfo": 1250.5,
+      "revenue": 5000,
+      "net_profit": 800,
+      "ebitda": 1200,
+      "eps": 12.5,
+      "roe": 18.5,
+      "roce": 22.3,
+      "debt_to_equity": 0.35,
+      "current_ratio": 1.8
+    }},
+    ... (7 more quarters)
+  ]
+}}
 
-**KEY RATIOS (Latest Quarter):**
-1. Current Ratio
-2. Quick Ratio
-3. Debt-to-Equity Ratio
-4. Interest Coverage Ratio
-5. Return on Equity (ROE) %
-6. Return on Assets (ROA) %
-7. Return on Capital Employed (ROCE) %
-8. Asset Turnover Ratio
-9. Inventory Turnover Ratio
-10. Receivables Turnover Days
-11. Payables Turnover Days
-12. Cash Conversion Cycle (Days)
-
-**PROFITABILITY METRICS (Latest Quarter):**
-1. Operating Leverage
-2. Financial Leverage
-3. Total Leverage
-4. Break-even Point (if available)
-5. Contribution Margin %
-
-**CASH FLOW METRICS (Last 5 Years Annual):**
-1. Operating Cash Flow
-2. Investing Cash Flow
-3. Financing Cash Flow
-4. Free Cash Flow
-5. Cash Flow from Operations to Net Profit Ratio
-
-**VALUATION METRICS (Current):**
-1. Market Cap
-2. P/E Ratio
-3. P/B Ratio
-4. EV/EBITDA
-5. Price-to-Sales Ratio
-6. Dividend Yield %
-7. Payout Ratio %
-
-**RECENT RESULTS:**
-- Last 4 quarterly results announcement dates
-- Links to results/investor presentations
-
-Format the response as structured JSON or clear tables with actual numbers. Include data sources.
+Provide actual numbers only. All growth rates in percentage. All amounts in Crores INR.
 """
     
     content, citations = query_perplexity(prompt)
     return content, citations
 
 @st.cache_data(ttl=3600)
-def get_company_overview(symbol, company_name):
-    """Get company overview and business description"""
+def get_pead_score(symbol, company_name):
+    """Calculate PEAD score"""
     stock_name = symbol.replace(".NS", "").replace(".BO", "")
     
     prompt = f"""
-For {company_name} (NSE: {stock_name}), provide:
+For {company_name} (NSE: {stock_name}), calculate PEAD score (0-100):
 
-1. **Business Overview:** Brief description of what the company does (2-3 sentences)
-2. **Sector:** Primary sector
-3. **Industry:** Specific industry
-4. **Market Cap:** Current market capitalization
-5. **Key Products/Services:** Top 3-5 products or services
-6. **Geographic Presence:** Main markets (India/International breakdown)
-7. **Number of Employees:** Total employee count
-8. **Competitors:** Top 3-5 main competitors in India
-9. **Recent Major Developments:** Any significant news in last 3 months (acquisitions, expansions, partnerships)
+Analyze last 8 quarterly results:
+1. Earnings surprise % (actual EPS vs consensus)
+2. Stock price movement: Day 1, Week 1, Month 1 post-announcement
+3. Pattern consistency
+4. Calculate PEAD Score (0-100)
 
-Keep it concise and factual with sources.
+Return JSON:
+{{
+  "pead_score": 76.5,
+  "interpretation": "High positive drift",
+  "last_8_quarters": [
+    {{
+      "quarter": "Q2 FY25",
+      "surprise_pct": 5.2,
+      "drift_1d": 2.1,
+      "drift_7d": 4.5,
+      "drift_30d": 8.3
+    }},
+    ...
+  ]
+}}
 """
     
     content, citations = query_perplexity(prompt)
     return content, citations
 
 @st.cache_data(ttl=3600)
-def calculate_pead_score(symbol, company_name):
-    """
-    Calculate Post-Earnings Announcement Drift (PEAD) Score.
-    This analyzes earnings surprises and subsequent stock performance.
-    """
+def get_earnings_news_only(symbol, company_name):
+    """Get ONLY earnings/results related news"""
     stock_name = symbol.replace(".NS", "").replace(".BO", "")
     
     prompt = f"""
-For {company_name} (NSE: {stock_name}), analyze the Post-Earnings Announcement Drift (PEAD):
+For {company_name} (NSE: {stock_name}), provide ONLY earnings-related news from last 6 months:
 
-1. **Last 8 Quarterly Earnings:**
-   - Quarter date
-   - Actual EPS vs Analyst Consensus EPS
-   - Earnings Surprise % (Beat/Miss)
-   - Stock price change 1 day after announcement
-   - Stock price change 5 days after announcement
-   - Stock price change 30 days after announcement
+Include ONLY:
+- Quarterly results announcements
+- Earnings call schedules/transcripts
+- Financial results press releases
+- Profit/loss announcements
 
-2. **PEAD Pattern Analysis:**
-   - Does the stock show consistent drift in the direction of earnings surprise?
-   - Average drift magnitude for positive surprises
-   - Average drift magnitude for negative surprises
-   - PEAD Score (0-100, where 100 = strongest positive drift pattern)
+EXCLUDE:
+- General company news
+- Product launches
+- Appointments
+- Acquisitions
 
-3. **Market Reaction Quality:**
-   - Does market under-react or over-react initially?
-   - Time taken for full price adjustment (days)
-   - Volatility during announcement periods
+Return JSON:
+{{
+  "earnings_news": [
+    {{
+      "date": "2024-10-15",
+      "title": "Q2 FY25 Results - Net Profit up 15%",
+      "link": "url",
+      "source": "NSE/BSE/Company Website"
+    }},
+    ...
+  ]
+}}
 
-4. **Latest Quarter Assessment:**
-   - Most recent earnings surprise
-   - Current drift status
-   - Expected continuation probability
-
-Provide numerical PEAD score and interpretation.
+Maximum 10 most recent items.
 """
     
     content, citations = query_perplexity(prompt)
     return content, citations
 
-# ------------------------ Streamlit UI ------------------------
-st.title("📊 Advanced Indian Stock Analyzer with PEAD Scoring")
-st.markdown("### *Powered by Perplexity AI for Accurate Financial Intelligence*")
+# ------------------------ Data Parsing ------------------------
+def parse_json_from_text(text):
+    """Extract JSON from Perplexity response"""
+    try:
+        # Try direct parse
+        return json.loads(text)
+    except:
+        # Extract JSON block
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except:
+                pass
+    return None
 
-st.sidebar.info("""
-🚀 **Features:**
-- 5-year quarterly financial history
-- 30+ key financial metrics & ratios
-- PEAD (Post-Earnings Announcement Drift) scoring
-- QoQ and YoY growth comparisons
-- Cash flow analysis
-- Valuation metrics
-- Recent results with links
+def create_metrics_dataframe(financial_data):
+    """Convert financial data to pandas DataFrame"""
+    data = parse_json_from_text(financial_data)
+    if not data or "quarters" not in data:
+        return None
+    
+    quarters = data["quarters"]
+    df = pd.DataFrame(quarters)
+    
+    # Reorder columns for display
+    column_order = [
+        "quarter", "result_date", "forward_pe", 
+        "sales_yoy", "sales_qoq", "np_yoy", "np_qoq",
+        "ebitda_yoy", "ebitda_qoq", "cfo",
+        "revenue", "net_profit", "ebitda", "eps",
+        "roe", "roce", "debt_to_equity", "current_ratio"
+    ]
+    
+    # Keep only available columns
+    available_cols = [col for col in column_order if col in df.columns]
+    df = df[available_cols]
+    
+    return df
 
-⚙️ **Setup:**
-Add `PERPLEXITY_API_KEY` to Streamlit Secrets
-""")
+# ------------------------ UI ------------------------
+st.title("📊 Stock Financial Analyzer - PEAD Score")
+st.caption("Clean, structured financial metrics with earnings-focused news")
 
-# Input section
-col1, col2 = st.columns([2, 1])
+# Input
+col1, col2 = st.columns([3, 1])
 with col1:
-    symbol_input = st.text_input("Enter Stock Symbol", value="SUNPHARMA.NS", 
-                                 help="Use .NS for NSE or .BO for BSE (e.g., RELIANCE.NS, TCS.BO)")
+    symbol = st.text_input("Stock Symbol", value="SUNPHARMA.NS", placeholder="e.g., RELIANCE.NS, TCS.NS")
 with col2:
-    st.markdown("**Verify Data At:**")
-    st.markdown("[BSE India](https://www.bseindia.com) | [NSE India](https://www.nseindia.com)")
+    st.markdown("### ")
+    analyze_btn = st.button("🔍 Analyze", type="primary", use_container_width=True)
 
-if st.button("🔍 Analyze Stock", type="primary"):
-    if not symbol_input:
-        st.warning("⚠️ Please enter a stock symbol (e.g., SUNPHARMA.NS)")
+if analyze_btn:
+    if not symbol:
+        st.error("Please enter a stock symbol")
+        st.stop()
+    
+    if not get_secret("PERPLEXITY_API_KEY"):
+        st.error("⚠️ Perplexity API key not configured. Add PERPLEXITY_API_KEY to secrets.")
+        st.stop()
+    
+    symbol = symbol.upper().strip()
+    stock_name = symbol.replace(".NS", "").replace(".BO", "")
+    
+    # Progress
+    with st.spinner("🔄 Fetching financial data..."):
+        financial_data, fin_citations = get_financial_metrics_table(symbol, stock_name)
+        pead_data, pead_citations = get_pead_score(symbol, stock_name)
+        news_data, news_citations = get_earnings_news_only(symbol, stock_name)
+    
+    # Display company header
+    st.markdown("---")
+    col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
+    with col_h1:
+        st.markdown(f"## 🏢 {stock_name}")
+    with col_h2:
+        # Parse PEAD score
+        pead_json = parse_json_from_text(pead_data) if pead_data else None
+        if pead_json and "pead_score" in pead_json:
+            score = pead_json["pead_score"]
+            st.metric("PEAD Score", f"{score}/100", 
+                     delta="High" if score > 70 else "Medium" if score > 40 else "Low")
+        else:
+            st.metric("PEAD Score", "N/A")
+    with col_h3:
+        st.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    
+    # Financial Metrics Table
+    st.markdown("---")
+    st.subheader("📈 Financial Metrics (Last 8 Quarters)")
+    
+    if financial_data:
+        df = create_metrics_dataframe(financial_data)
+        
+        if df is not None and not df.empty:
+            # Format the dataframe
+            st.dataframe(
+                df.style.format({
+                    "sales_yoy": "{:.1f}%",
+                    "sales_qoq": "{:.1f}%",
+                    "np_yoy": "{:.1f}%",
+                    "np_qoq": "{:.1f}%",
+                    "ebitda_yoy": "{:.1f}%",
+                    "ebitda_qoq": "{:.1f}%",
+                    "forward_pe": "{:.1f}",
+                    "cfo": "₹{:.0f} Cr",
+                    "revenue": "₹{:.0f} Cr",
+                    "net_profit": "₹{:.0f} Cr",
+                    "ebitda": "₹{:.0f} Cr",
+                    "eps": "₹{:.2f}",
+                    "roe": "{:.1f}%",
+                    "roce": "{:.1f}%",
+                    "debt_to_equity": "{:.2f}",
+                    "current_ratio": "{:.2f}"
+                }).background_gradient(subset=["sales_yoy", "np_yoy", "ebitda_yoy"], cmap="RdYlGn", vmin=-10, vmax=30),
+                use_container_width=True,
+                height=400
+            )
+            
+            # Key metrics summary
+            st.markdown("### 📊 Key Highlights (Latest Quarter)")
+            latest = df.iloc[0]
+            
+            m1, m2, m3, m4, m5, m6 = st.columns(6)
+            m1.metric("Revenue YoY", f"{latest.get('sales_yoy', 0):.1f}%")
+            m2.metric("NP YoY", f"{latest.get('np_yoy', 0):.1f}%")
+            m3.metric("EBITDA YoY", f"{latest.get('ebitda_yoy', 0):.1f}%")
+            m4.metric("ROE", f"{latest.get('roe', 0):.1f}%")
+            m5.metric("ROCE", f"{latest.get('roce', 0):.1f}%")
+            m6.metric("D/E Ratio", f"{latest.get('debt_to_equity', 0):.2f}")
+            
+            # Data sources
+            if fin_citations:
+                with st.expander("📚 Data Sources"):
+                    for i, cite in enumerate(fin_citations[:5], 1):
+                        st.caption(f"{i}. {cite}")
+        else:
+            st.warning("⚠️ Unable to parse financial data into table format")
+            st.text(financial_data[:500] + "..." if financial_data else "No data")
     else:
-        symbol = symbol_input.upper().strip()
-        stock_name = symbol.replace(".NS", "").replace(".BO", "")
-        
-        # Check API key
-        if not get_secret("PERPLEXITY_API_KEY"):
-            st.error("❌ Perplexity API key not configured. Please add PERPLEXITY_API_KEY to your Streamlit secrets.")
-            st.stop()
-        
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        # Step 1: Company Overview
-        status_text.text("📋 Fetching company overview...")
-        progress_bar.progress(10)
-        company_overview, overview_citations = get_company_overview(symbol, stock_name)
-        
-        # Step 2: Comprehensive Financials
-        status_text.text("💰 Fetching 5-year financial data...")
-        progress_bar.progress(40)
-        financials, financial_citations = get_comprehensive_financials(symbol, stock_name)
-        
-        # Step 3: PEAD Score
-        status_text.text("📈 Calculating PEAD score...")
-        progress_bar.progress(70)
-        pead_analysis, pead_citations = calculate_pead_score(symbol, stock_name)
-        
-        progress_bar.progress(100)
-        status_text.text("✅ Analysis complete!")
-        
-        # Clear progress indicators
-        import time
-        time.sleep(1)
-        progress_bar.empty()
-        status_text.empty()
-        
-        # ======================== DISPLAY RESULTS ========================
-        
-        # Company Header
-        st.header(f"🏢 {stock_name}")
-        st.caption(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M IST')}")
-        
-        # Company Overview Section
-        st.markdown("---")
-        st.subheader("📊 Company Overview")
-        if company_overview:
-            st.markdown(company_overview)
-            if overview_citations:
-                with st.expander("📚 Sources for Company Overview"):
-                    for i, cite in enumerate(overview_citations, 1):
-                        st.markdown(f"{i}. {cite}")
+        st.error("❌ Failed to fetch financial data")
+    
+    # PEAD Analysis
+    st.markdown("---")
+    st.subheader("🎯 PEAD Analysis")
+    
+    col_p1, col_p2 = st.columns([1, 2])
+    
+    with col_p1:
+        if pead_data:
+            pead_json = parse_json_from_text(pead_data)
+            if pead_json:
+                score = pead_json.get("pead_score", "N/A")
+                interpretation = pead_json.get("interpretation", "No interpretation")
+                
+                st.metric("PEAD Score", f"{score}/100" if isinstance(score, (int, float)) else score)
+                st.info(f"**Pattern:** {interpretation}")
+            else:
+                st.text(pead_data[:300] if pead_data else "No data")
+    
+    with col_p2:
+        if pead_data:
+            pead_json = parse_json_from_text(pead_data)
+            if pead_json and "last_8_quarters" in pead_json:
+                pead_df = pd.DataFrame(pead_json["last_8_quarters"])
+                st.dataframe(
+                    pead_df.style.format({
+                        "surprise_pct": "{:.1f}%",
+                        "drift_1d": "{:.1f}%",
+                        "drift_7d": "{:.1f}%",
+                        "drift_30d": "{:.1f}%"
+                    }),
+                    use_container_width=True
+                )
+    
+    # Earnings News ONLY
+    st.markdown("---")
+    st.subheader("📰 Earnings & Results News Only")
+    st.caption("Showing only quarterly results, earnings calls, and profit announcements")
+    
+    if news_data:
+        news_json = parse_json_from_text(news_data)
+        if news_json and "earnings_news" in news_json:
+            news_items = news_json["earnings_news"]
+            
+            if news_items:
+                for item in news_items[:10]:
+                    with st.container():
+                        col_n1, col_n2 = st.columns([4, 1])
+                        with col_n1:
+                            title = item.get("title", "No title")
+                            link = item.get("link", "#")
+                            st.markdown(f"**[{title}]({link})**")
+                            st.caption(f"📅 {item.get('date', 'N/A')} | 📰 {item.get('source', 'N/A')}")
+                        with col_n2:
+                            st.caption(item.get("date", ""))
+                        st.markdown("---")
+            else:
+                st.info("No recent earnings news found")
         else:
-            st.warning("Unable to fetch company overview")
-        
-        # Financial Metrics Section
-        st.markdown("---")
-        st.subheader("💰 Comprehensive Financial Analysis (5-Year Data)")
-        if financials:
-            st.markdown(financials)
-            if financial_citations:
-                with st.expander("📚 Sources for Financial Data"):
-                    for i, cite in enumerate(financial_citations, 1):
-                        st.markdown(f"{i}. {cite}")
-        else:
-            st.warning("Unable to fetch financial data")
-        
-        # PEAD Score Section
-        st.markdown("---")
-        st.subheader("🎯 PEAD (Post-Earnings Announcement Drift) Analysis")
-        st.info("""
-        **What is PEAD?** PEAD measures how stock prices continue to drift in the direction of an earnings surprise 
-        after the initial announcement. A high PEAD score indicates predictable post-earnings momentum, which can be 
-        valuable for trading strategies around earnings dates.
-        """)
-        
-        if pead_analysis:
-            st.markdown(pead_analysis)
-            if pead_citations:
-                with st.expander("📚 Sources for PEAD Analysis"):
-                    for i, cite in enumerate(pead_citations, 1):
-                        st.markdown(f"{i}. {cite}")
-        else:
-            st.warning("Unable to calculate PEAD score")
-        
-        # Key Insights Summary
-        st.markdown("---")
-        st.subheader("💡 AI-Generated Key Insights")
-        
-        insight_prompt = f"""
-Based on the financial analysis of {stock_name}, provide:
-
-1. **Overall Financial Health Score (0-100):** With brief justification
-2. **Top 3 Strengths:** What's the company doing well?
-3. **Top 3 Concerns:** What are the red flags or areas of concern?
-4. **Growth Trajectory:** Is the company in growth, stable, or declining phase?
-5. **Competitive Position:** How does it compare to industry peers?
-6. **Investment Recommendation:** Based purely on fundamentals (Buy/Hold/Sell with reasoning)
-
-Keep it concise, actionable, and data-driven.
-"""
-        
-        with st.spinner("🤖 Generating AI insights..."):
-            insights, insight_citations = query_perplexity(insight_prompt)
-            if insights:
-                st.markdown(insights)
-                if insight_citations:
-                    with st.expander("📚 Sources for Insights"):
-                        for i, cite in enumerate(insight_citations, 1):
-                            st.markdown(f"{i}. {cite}")
-        
-        # Download Report Option
-        st.markdown("---")
-        st.subheader("📥 Export Analysis")
-        
-        report_text = f"""
-COMPREHENSIVE STOCK ANALYSIS REPORT
-Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M IST')}
-Stock: {stock_name}
-Symbol: {symbol}
-
-{'='*80}
-COMPANY OVERVIEW
-{'='*80}
-{company_overview or 'N/A'}
-
-{'='*80}
-FINANCIAL ANALYSIS (5-YEAR DATA)
-{'='*80}
-{financials or 'N/A'}
-
-{'='*80}
-PEAD ANALYSIS
-{'='*80}
-{pead_analysis or 'N/A'}
-
-{'='*80}
-KEY INSIGHTS
-{'='*80}
-{insights or 'N/A'}
-
-{'='*80}
-DISCLAIMER
-{'='*80}
-This report is for informational purposes only and does not constitute financial advice.
-Always verify data from official sources before making investment decisions.
-"""
-        
+            st.warning("⚠️ Unable to parse news data")
+            st.text(news_data[:300] if news_data else "No data")
+    else:
+        st.error("❌ Failed to fetch earnings news")
+    
+    # Download option
+    st.markdown("---")
+    if financial_data:
         st.download_button(
-            label="📄 Download Full Report (TXT)",
-            data=report_text,
-            file_name=f"{stock_name}_analysis_{datetime.now().strftime('%Y%m%d')}.txt",
-            mime="text/plain"
+            label="📥 Download Report (JSON)",
+            data=financial_data,
+            file_name=f"{stock_name}_analysis_{datetime.now().strftime('%Y%m%d')}.json",
+            mime="application/json"
         )
 
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; color: #666; font-size: 0.9em;'>
-    <p>⚠️ <strong>Disclaimer:</strong> This tool provides financial analysis for informational purposes only. 
-    Not financial advice. Always verify critical data from official sources (BSE/NSE/Company filings) before making investment decisions.</p>
-    <p>Powered by Perplexity AI | Data sources cited in expandable sections</p>
+<div style='text-align: center; color: #666;'>
+    <p>⚠️ Not financial advice. Verify data from official sources (NSE/BSE).</p>
+    <p>Powered by Perplexity AI</p>
 </div>
 """, unsafe_allow_html=True)
