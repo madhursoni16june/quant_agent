@@ -268,29 +268,34 @@ if analyze_btn:
         df = create_metrics_dataframe(financial_data)
         
         if df is not None and not df.empty:
-            # Format the dataframe
-            st.dataframe(
-                df.style.format({
-                    "sales_yoy": "{:.1f}%",
-                    "sales_qoq": "{:.1f}%",
-                    "np_yoy": "{:.1f}%",
-                    "np_qoq": "{:.1f}%",
-                    "ebitda_yoy": "{:.1f}%",
-                    "ebitda_qoq": "{:.1f}%",
-                    "forward_pe": "{:.1f}",
-                    "cfo": "₹{:.0f} Cr",
-                    "revenue": "₹{:.0f} Cr",
-                    "net_profit": "₹{:.0f} Cr",
-                    "ebitda": "₹{:.0f} Cr",
-                    "eps": "₹{:.2f}",
-                    "roe": "{:.1f}%",
-                    "roce": "{:.1f}%",
-                    "debt_to_equity": "{:.2f}",
-                    "current_ratio": "{:.2f}"
-                }).background_gradient(subset=["sales_yoy", "np_yoy", "ebitda_yoy"], cmap="RdYlGn", vmin=-10, vmax=30),
-                use_container_width=True,
-                height=400
-            )
+            # Format percentage and currency columns
+            display_df = df.copy()
+            
+            # Format columns manually
+            pct_cols = ["sales_yoy", "sales_qoq", "np_yoy", "np_qoq", "ebitda_yoy", "ebitda_qoq", "roe", "roce"]
+            for col in pct_cols:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+            
+            curr_cols = ["cfo", "revenue", "net_profit", "ebitda"]
+            for col in curr_cols:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].apply(lambda x: f"₹{x:.0f} Cr" if pd.notna(x) else "N/A")
+            
+            if "eps" in display_df.columns:
+                display_df["eps"] = display_df["eps"].apply(lambda x: f"₹{x:.2f}" if pd.notna(x) else "N/A")
+            
+            if "forward_pe" in display_df.columns:
+                display_df["forward_pe"] = display_df["forward_pe"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "N/A")
+            
+            if "debt_to_equity" in display_df.columns:
+                display_df["debt_to_equity"] = display_df["debt_to_equity"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+            
+            if "current_ratio" in display_df.columns:
+                display_df["current_ratio"] = display_df["current_ratio"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+            
+            # Display with clean formatting
+            st.dataframe(display_df, use_container_width=True, height=400)
             
             # Key metrics summary
             st.markdown("### 📊 Key Highlights (Latest Quarter)")
@@ -338,15 +343,13 @@ if analyze_btn:
             pead_json = parse_json_from_text(pead_data)
             if pead_json and "last_8_quarters" in pead_json:
                 pead_df = pd.DataFrame(pead_json["last_8_quarters"])
-                st.dataframe(
-                    pead_df.style.format({
-                        "surprise_pct": "{:.1f}%",
-                        "drift_1d": "{:.1f}%",
-                        "drift_7d": "{:.1f}%",
-                        "drift_30d": "{:.1f}%"
-                    }),
-                    use_container_width=True
-                )
+                
+                # Format columns manually
+                for col in ["surprise_pct", "drift_1d", "drift_7d", "drift_30d"]:
+                    if col in pead_df.columns:
+                        pead_df[col] = pead_df[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                
+                st.dataframe(pead_df, use_container_width=True)
     
     # Earnings News ONLY
     st.markdown("---")
