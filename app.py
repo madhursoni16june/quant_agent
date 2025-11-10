@@ -301,13 +301,36 @@ if analyze_btn:
             st.markdown("### 📊 Key Highlights (Latest Quarter)")
             latest = df.iloc[0]
             
+            # Helper function to safely get values
+            def get_val(row, col, default=0):
+                try:
+                    if col in row.index:
+                        val = row[col]
+                        if pd.notna(val):
+                            return float(val)
+                    return default
+                except:
+                    return default
+            
             m1, m2, m3, m4, m5, m6 = st.columns(6)
-            m1.metric("Revenue YoY", f"{latest.get('sales_yoy', 0):.1f}%")
-            m2.metric("NP YoY", f"{latest.get('np_yoy', 0):.1f}%")
-            m3.metric("EBITDA YoY", f"{latest.get('ebitda_yoy', 0):.1f}%")
-            m4.metric("ROE", f"{latest.get('roe', 0):.1f}%")
-            m5.metric("ROCE", f"{latest.get('roce', 0):.1f}%")
-            m6.metric("D/E Ratio", f"{latest.get('debt_to_equity', 0):.2f}")
+            
+            rev_yoy = get_val(latest, 'sales_yoy', 0)
+            m1.metric("Revenue YoY", f"{rev_yoy:.1f}%" if rev_yoy != 0 else "N/A")
+            
+            np_yoy = get_val(latest, 'np_yoy', 0)
+            m2.metric("NP YoY", f"{np_yoy:.1f}%" if np_yoy != 0 else "N/A")
+            
+            ebitda_yoy = get_val(latest, 'ebitda_yoy', 0)
+            m3.metric("EBITDA YoY", f"{ebitda_yoy:.1f}%" if ebitda_yoy != 0 else "N/A")
+            
+            roe = get_val(latest, 'roe', 0)
+            m4.metric("ROE", f"{roe:.1f}%" if roe != 0 else "N/A")
+            
+            roce = get_val(latest, 'roce', 0)
+            m5.metric("ROCE", f"{roce:.1f}%" if roce != 0 else "N/A")
+            
+            de_ratio = get_val(latest, 'debt_to_equity', 0)
+            m6.metric("D/E Ratio", f"{de_ratio:.2f}" if de_ratio != 0 else "N/A")
             
             # Data sources
             if fin_citations:
